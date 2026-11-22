@@ -1,0 +1,1224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moka Pot CFD — 2D axisymmetric brew simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #121211; --surface-1: #1a1a19; --surface-2: #232321; --line: #2f2f2c;
+    --text-primary: #f0efec; --text-secondary: #c3c2b7; --text-muted: #8f8e86;
+    --series-1: #3987e5; --series-2: #d95926; --accent: #d9a066;
+    --good: #0ca30c; --warn: #c98500; --crit: #e66767;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text-primary); font: 15px/1.45 Inter, system-ui, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 16px 14px 40px; }
+  header h1 { font-size: 22px; margin: 4px 0 2px; letter-spacing: -0.01em; }
+  header p { margin: 0 0 14px; color: var(--text-secondary); font-size: 14px; }
+  .grid { display: grid; gap: 14px; grid-template-columns: 1fr; }
+  @media (min-width: 860px) { .grid { grid-template-columns: minmax(340px, 440px) 1fr; } }
+  .card { background: var(--surface-1); border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .simbox { position: relative; }
+  canvas#view { width: 100%; display: block; border-radius: 10px; background: #0b0b0a; touch-action: none; }
+  .overlay { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 26px; }
+  .pill { font: 500 12px/1 Inter; padding: 6px 9px; border-radius: 999px; background: rgba(20,20,19,.82); border: 1px solid var(--line); color: var(--text-primary); }
+  .pill .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; background: var(--text-muted); }
+  .probe { position: absolute; pointer-events: none; font: 12px/1.35 'JetBrains Mono', monospace; background: rgba(20,20,19,.92); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; color: var(--text-primary); white-space: nowrap; display: none; }
+  .tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 10px 0 8px; }
+  .tabs button { padding: 8px 4px; font-size: 12.5px; }
+  .tabs button, .btn { font: 500 13px Inter; color: var(--text-primary); background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 8px 11px; cursor: pointer; }
+  .tabs button.on { background: var(--text-primary); color: #121211; border-color: var(--text-primary); }
+  .btn.primary { background: var(--accent); color: #1b1209; border-color: var(--accent); font-weight: 600; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .cbar { display: flex; align-items: center; gap: 8px; font: 12px 'JetBrains Mono', monospace; color: var(--text-secondary); margin-top: 6px; }
+  .cbar .bar { flex: 1; height: 10px; border-radius: 5px; }
+  .tiles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  @media (min-width: 560px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+  .tile { background: var(--surface-2); border-radius: 10px; padding: 9px 10px; }
+  .tile .k { font-size: 12px; color: var(--text-secondary); }
+  .tile .v { font: 500 20px 'JetBrains Mono', monospace; margin-top: 2px; }
+  .tile .v small { font-size: 12px; color: var(--text-muted); margin-left: 3px; }
+  .charts { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+  @media (min-width: 560px) { .charts { grid-template-columns: 1fr 1fr; } }
+  .chart { position: relative; background: var(--surface-2); border-radius: 10px; padding: 8px 8px 4px; }
+  .chart h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+  .chart .legend { font-size: 12px; color: var(--text-secondary); display: flex; gap: 12px; margin-bottom: 2px; }
+  .chart .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: 3px; margin-right: 5px; }
+  .chart canvas { width: 100%; height: 130px; display: block; touch-action: pan-y; }
+  .tip { position: absolute; pointer-events: none; background: #0f0f0e; border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px; font: 12px/1.35 'JetBrains Mono', monospace; display: none; white-space: nowrap; z-index: 2; }
+  .ctrl { display: grid; gap: 12px; margin-top: 12px; }
+  .ctrl label { display: block; font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+  .ctrl label b { color: var(--text-primary); font-weight: 600; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button { flex: 1; font: 500 13px Inter; background: var(--surface-2); color: var(--text-primary); border: 1px solid var(--line); border-radius: 9px; padding: 8px 6px; cursor: pointer; }
+  .seg button.on { border-color: var(--accent); color: var(--accent); }
+  .hint { font-size: 12px; color: var(--text-muted); }
+  .summary { display: none; margin-top: 12px; background: #1f1a14; border: 1px solid #4a3722; border-radius: 12px; padding: 12px; }
+  .summary h3 { margin: 0 0 6px; font-size: 15px; color: var(--accent); }
+  .summary ul { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 14px; }
+  .summary b { color: var(--text-primary); }
+  details { margin-top: 14px; }
+  details summary { cursor: pointer; font-weight: 600; font-size: 15px; padding: 6px 0; }
+  .notes { color: var(--text-secondary); font-size: 14px; }
+  .notes h4 { color: var(--text-primary); margin: 14px 0 4px; font-size: 14px; }
+  .notes code, .eq { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--text-primary); }
+  .eq { display: block; background: var(--surface-2); border-radius: 8px; padding: 8px 10px; margin: 6px 0; overflow-x: auto; white-space: pre; }
+  table.params { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.params td { border-top: 1px solid var(--line); padding: 5px 4px; vertical-align: top; }
+  table.params td:last-child { font-family: 'JetBrains Mono', monospace; color: var(--text-primary); white-space: nowrap; }
+  .sectitle { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Moka pot brew — 2D CFD</h1>
+    <p>A live axisymmetric (r–z) simulation of a 3-cup stovetop moka pot. Heat the boiler, watch steam pressure drive water up through the coffee puck, and track the extraction. Tap the pot to probe any point.</p>
+  </header>
+
+  <div class="grid">
+    <div>
+      <div class="card simbox">
+        <div class="overlay"><span class="pill" id="phasePill"><span class="dot" id="phaseDot"></span><span id="phaseTxt">Heating</span></span><span class="pill" id="timePill">t = 0.0 s</span><span class="pill" id="valvePill" style="display:none">Safety valve venting</span></div>
+        <div style="position:relative"><canvas id="view" width="610" height="1080" aria-label="Moka pot cross-section simulation"></canvas><div class="probe" id="probe"></div></div>
+        <div class="tabs" id="fieldTabs">
+          <button data-f="T" class="on">Temperature</button>
+          <button data-f="U">Velocity</button>
+          <button data-f="P">Pressure</button>
+          <button data-f="C">Coffee TDS</button>
+        </div>
+        <div class="cbar"><span id="cbMin">20</span><div class="bar" id="cbBar"></div><span id="cbMax">120 °C</span></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="playBtn">Pause</button>
+          <button class="btn" id="resetBtn">Restart</button>
+          <button class="btn" id="heatBtn">Turn heat off</button>
+          <button class="btn" id="tracerBtn">Tracers: on</button>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <p class="sectitle">Live readout</p>
+        <div class="tiles">
+          <div class="tile"><div class="k">Boiler pressure</div><div class="v" id="vP">0.00<small>bar g</small></div></div>
+          <div class="tile"><div class="k">Boiler water</div><div class="v" id="vTb">20<small>°C</small></div></div>
+          <div class="tile"><div class="k">Flow to cup</div><div class="v" id="vQ">0.0<small>ml/s</small></div></div>
+          <div class="tile"><div class="k">Coffee at spout</div><div class="v" id="vTo">—<small>°C</small></div></div>
+          <div class="tile"><div class="k">Spout TDS</div><div class="v" id="vC">—<small>%</small></div></div>
+          <div class="tile"><div class="k">In upper chamber</div><div class="v" id="vV">0<small>ml</small></div></div>
+          <div class="tile"><div class="k">Cup strength</div><div class="v" id="vTDS">—<small>% TDS</small></div></div>
+          <div class="tile"><div class="k">Extraction yield</div><div class="v" id="vEY">0.0<small>%</small></div></div>
+        </div>
+        <div class="summary" id="summary"></div>
+        <div class="charts">
+          <div class="chart"><h3>Boiler gauge pressure (bar)</h3><canvas id="chP"></canvas><div class="tip"></div></div>
+          <div class="chart"><h3>Flow into upper chamber (ml/s)</h3><canvas id="chQ"></canvas><div class="tip"></div></div>
+          <div class="chart"><h3>Temperature (°C)</h3><div class="legend"><span><i style="background:var(--series-1)"></i>Boiler water</span><span><i style="background:var(--series-2)"></i>Coffee at spout</span></div><canvas id="chT"></canvas><div class="tip"></div></div>
+          <div class="chart"><h3>Spout TDS (%)</h3><canvas id="chC"></canvas><div class="tip"></div></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <p class="sectitle">Brew settings</p>
+        <div class="ctrl">
+          <div><label>Stove heat into the pot <b id="lPow">450 W</b></label><input id="sPow" type="range" min="150" max="1200" step="25" value="450"><div class="hint">Changes apply immediately, like turning the knob.</div></div>
+          <div><label>Grind (bed permeability) <b id="lK">medium · 1.5×10⁻¹³ m²</b></label><input id="sK" type="range" min="0" max="100" step="1" value="50"><div class="hint">Finer grind → lower permeability → higher pressure, slower flow. Applies on restart.</div></div>
+          <div><label>Starting water temperature</label>
+            <div class="seg" id="segT0"><button data-v="20" class="on">Cold 20 °C</button><button data-v="60">Warm 60 °C</button><button data-v="85">Pre-boiled 85 °C</button></div>
+            <div class="hint">Applies on restart.</div></div>
+          <div><label>Simulation speed</label>
+            <div class="seg" id="segSpd"><button data-v="1">1×</button><button data-v="3">3×</button><button data-v="6" class="on">6×</button><button data-v="12">12×</button></div>
+            <div class="hint" id="perf">Solver steps per frame.</div></div>
+          <button class="btn primary" id="applyBtn">Apply &amp; restart brew</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <details class="card" style="margin-top:14px">
+    <summary>How the model works</summary>
+    <div class="notes">
+      <h4>Domain</h4>
+      <p>A moka pot is rotationally symmetric, so the flow is solved on a 2D meridional plane (radius r, height z) and mirrored for display. The grid is 32 × 110 cells at 1.25 mm, covering a 3-cup pot: 7.3 cm boiler with ~155 ml of water, a funnel tube and cone, a 13 g coffee bed (5.25 cm × 1.5 cm) between two perforated plates, the central column, and the upper chamber.</p>
+      <h4>Fluid flow</h4>
+      <p>Incompressible Navier–Stokes in axisymmetric form on a staggered (MAC) grid, with a Brinkman–Darcy drag term in the coffee bed and plates:</p>
+      <span class="eq">∂u/∂t + (u·∇)u = −∇p/ρ + ν_eff ∇²u + gβ(T − T_ref) ẑ − (μ(T)/ρk) u
+∇·u = 0      (axisymmetric: (1/r)∂(r u_r)/∂r + ∂u_z/∂z = 0)</span>
+      <p>Advection is semi-Lagrangian (RK2 back-trace), the drag is implicit, and pressure is found each step with an MIC(0)-preconditioned conjugate-gradient solve. Hydrostatic pressure is removed analytically, so the solver handles gravity exactly. Viscosity varies with temperature (μ falls from 1.0 to 0.28 mPa·s between 20 and 100 °C), so hotter water flows through the puck more easily.</p>
+      <h4>Free surfaces and the headspace</h4>
+      <p>Three liquid surfaces move: the boiler water level, the wetting front climbing through the funnel, puck and column, and the coffee level in the upper chamber. Each one sets the pressure on the liquid next to it (ghost-fluid boundary condition). The boiler headspace is a lumped gas of trapped air plus saturated water vapour:</p>
+      <span class="eq">P_boiler = n_air R T_s / V_gas + P_sat(T_s)</span>
+      <p>where T_s is the water surface temperature. Air expansion plus vapour pressure push the water up, and the headspace grows as the boiler empties. The pressure is coupled implicitly to the flow (an "air spring"), which keeps the U-tube oscillation between boiler and funnel stable.</p>
+      <h4>Heat</h4>
+      <p>The stove adds a uniform heat flux to the boiler floor. Liquid hotter than the local saturation temperature boils: the excess heat moves up to the next cell (subcooled nucleate boiling, shown as bubbles), and in the column and upper chamber the liquid flashes at the saturation temperature. The cold puck and basket take heat from the first water (local thermal equilibrium over about 1 s). Heat also crosses the thin funnel wall. The upper chamber walls and column draw heat out of the coffee, and its surface loses heat by evaporation.</p>
+      <h4>Extraction</h4>
+      <p>Each bed cell holds soluble solids in two pools: fast ones (fines and surface, 70%) and slow ones (diffusion from inside the grains, 30%). They dissolve into the pore water at a rate set by how far the water is from saturation, and the rate doubles roughly every 23 °C:</p>
+      <span class="eq">∂S_i/∂t = −k_i e^{0.03(T−90)} (S_i/S_i0)(c_sat − c)
+ε ∂c/∂t + u·∇c = −Σ ∂S_i/∂t</span>
+      <h4>End of brew</h4>
+      <p>When the boiler level falls below the bottom of the funnel tube, gas breaks into the funnel. This "strombolian" phase pushes the last slug of liquid through the puck in a burst, then steam sputters out. The heater shuts off at that point.</p>
+      <h4>Key parameters</h4>
+      <table class="params">
+        <tr><td>Grid / cell size</td><td>32 × 110 · 1.25 mm</td></tr>
+        <tr><td>Bed porosity (flow / water uptake)</td><td>0.45 / 0.70</td></tr>
+        <tr><td>Bed permeability (fine → coarse)</td><td>0.6 – 4×10⁻¹³ m²</td></tr>
+        <tr><td>Plate permeability</td><td>5×10⁻¹¹ m²</td></tr>
+        <tr><td>Extractable solubles</td><td>30% of dose</td></tr>
+        <tr><td>Rate constants k_f / k_s (90 °C)</td><td>0.045 / 0.004 s⁻¹</td></tr>
+        <tr><td>Effective viscosity / boiler heat diffusivity</td><td>4×10⁻⁶ / 1×10⁻⁵ m²/s</td></tr>
+        <tr><td>Safety valve</td><td>1.8 bar gauge</td></tr>
+      </table>
+      <h4>Limitations</h4>
+      <p>This is a teaching-grade reduced model, not a validated design tool. The grid can't resolve turbulent convection in the boiler, so an effective (eddy) viscosity and diffusivity stand in for it. Vapour bubbles and the sputtering two-phase flow are modelled, not resolved. The puck doesn't swell or channel, and its permeability stays constant. Expect the trends (onset temperature, the pressure plateau, falling TDS, the final surge) to be right, and the absolute numbers only roughly.</p>
+    </div>
+  </details>
+</div>
+
+<script>
+// Axisymmetric (r–z) 2D CFD model of a 3-cup stovetop moka pot.
+// MAC grid, semi-Lagrangian advection, Darcy–Brinkman porous bed,
+// free surfaces as Dirichlet pressure boundaries, MIC(0)-PCG pressure solve,
+// lumped air + vapour thermodynamics for the boiler headspace.
+(function (root) {
+  const NR = 32, NZ = 110, H = 1.25e-3;
+  const RHO = 1000, CP = 4186, G = 9.81, PATM = 101325;
+  const SOLID = 0, BOIL = 1, PATH = 2, POOL = 3, SPOUT = 4, OUT = 5;
+  const N = NR * NZ;
+  const NU = 4e-6;              // effective (eddy) kinematic viscosity
+  const S0 = 120;               // extractable solubles, kg per m^3 of bed
+  const CSAT = 220;             // effective solubility, kg/m^3
+  const KF = 0.045, KS = 0.004;  // fast / slow extraction rates at 90 °C, 1/s
+  const BED_RHO = 400;          // ground coffee packing density, kg/m^3
+  const CS_BED = 1.7e6;         // solid heat capacity of bed + basket, J/m^3K
+  const CW_TOP = 190;           // heat capacity of upper chamber metal, J/K
+  const U_WALL = 800;           // coffee→upper-wall heat-transfer coeff, W/m^2K
+  const VALVE = 1.8e5;          // safety valve setpoint, Pa gauge
+  const A_HOLES = 1.5e-5;       // real spout hole area (for jet visuals), m^2
+
+  const id = (i, j) => i + j * NR;
+  const ui = (i, j) => i + j * (NR + 1);
+  const wi = (i, j) => i + j * NR;
+
+  function psat(T) {
+    const A = T < 100 ? [8.07131, 1730.63, 233.426] : [8.14019, 1810.94, 244.485];
+    return Math.pow(10, A[0] - A[1] / (A[2] + T)) * 133.322;
+  }
+  function tsat(P) {
+    const l = Math.log10(P / 133.322);
+    let T = 1730.63 / (8.07131 - l) - 233.426;
+    if (T > 100) T = 1810.94 / (8.14019 - l) - 244.485;
+    return T;
+  }
+  const mu = T => 2.414e-5 * Math.pow(10, 247.8 / (Math.max(T, 1) + 133.15));
+  const beta = T => 1e-4 + 6.7e-6 * T;
+
+  function Rin(j) { if (j < 4) return 0; if (j <= 24) return 5; if (j <= 32) return 5 + 2 * (j - 24); return 21; }
+
+  // ---------- geometry ----------
+  const type = new Uint8Array(N), eps = new Float64Array(N), fill = new Float64Array(N);
+  const kperm = new Float64Array(N), isBed = new Uint8Array(N), isPlate = new Uint8Array(N);
+  const rc = new Float64Array(NR), Vc = new Float64Array(NR);
+  for (let i = 0; i < NR; i++) { rc[i] = (i + 0.5) * H; Vc[i] = 2 * Math.PI * rc[i] * H * H; }
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+    let t = OUT;
+    if (j >= 108 || i >= 30) t = OUT;
+    else if (i === 29 || j === 0 || j === 107) t = SOLID;
+    else if (j <= 45) {
+      t = BOIL;
+      if (j >= 4) { const r0 = Rin(j), r1 = Rin(j + 1); if (i < r0) t = PATH; else if (i <= Math.max(r0, r1)) t = SOLID; }
+    } else if (j <= 47) t = i <= 20 ? PATH : SOLID;
+    else if (j <= 49) t = i <= 2 ? PATH : SOLID;
+    else {
+      if (i <= 2) t = j <= 91 ? PATH : (j <= 93 ? SOLID : POOL);
+      else if (i === 3) t = (j === 90 || j === 91) ? SPOUT : (j <= 93 ? SOLID : POOL);
+      else t = POOL;
+    }
+    const c = id(i, j);
+    type[c] = t; eps[c] = 1; fill[c] = 1; kperm[c] = Infinity;
+    if (t === PATH && (j === 33 || j === 46)) { kperm[c] = 5e-11; eps[c] = 0.5; fill[c] = 0.5; isPlate[c] = 1; }
+    if (t === PATH && j >= 34 && j <= 45) { eps[c] = 0.45; fill[c] = 0.7; isBed[c] = 1; }
+  }
+  const capB = new Float64Array(NZ), capP = new Float64Array(NZ), capQ = new Float64Array(NZ);
+  let bedVol = 0;
+  for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+    const c = id(i, j);
+    if (type[c] === BOIL) capB[j] += Vc[i];
+    if (type[c] === PATH) capP[j] += Vc[i] * fill[c];
+    if (type[c] === POOL && j >= 50) capQ[j] += Vc[i];
+    if (isBed[c]) bedVol += Vc[i];
+  }
+  const sumRange = (cap, a, b) => { let s = 0; for (let j = a; j <= b; j++) s += cap[j]; return s; };
+  const capBtot = sumRange(capB, 1, 45), capPtot = sumRange(capP, 4, 91), capQtot = sumRange(capQ, 50, 89);
+  const DOSE = bedVol * BED_RHO; // kg
+
+  function level(cap, vol, j0, j1) {
+    let acc = 0;
+    for (let j = j0; j <= j1; j++) {
+      if (cap[j] <= 0) continue;
+      if (acc + cap[j] >= vol) { const f = Math.max(0, (vol - acc) / cap[j]); return { j, f, z: (j + f) * H }; }
+      acc += cap[j];
+    }
+    return { j: j1 + 1, f: 0, z: (j1 + 1) * H };
+  }
+
+  // ---------- state ----------
+  const u = new Float64Array((NR + 1) * NZ), w = new Float64Array(NR * (NZ + 1));
+  const us = new Float64Array(u.length), ws = new Float64Array(w.length);
+  const T = new Float64Array(N), C = new Float64Array(N), Ts = new Float64Array(N);
+  const Sf = new Float64Array(N), Ss = new Float64Array(N);
+  const T2 = new Float64Array(N), C2 = new Float64Array(N);
+  const liq = new Uint8Array(N), liqPrev = new Uint8Array(N);
+  const p = new Float64Array(N), pg = new Float64Array(N);
+  const gU = new Float64Array(u.length), gW = new Float64Array(w.length);
+  const aU = new Float64Array(u.length), aW = new Float64Array(w.length); // 1+dt*alpha
+  const actU = new Uint8Array(u.length), actW = new Uint8Array(w.length);
+  const Adiag = new Float64Array(N), Ai = new Float64Array(N), Aj = new Float64Array(N);
+  const bvec = new Float64Array(N), rr = new Float64Array(N), zz = new Float64Array(N), ss = new Float64Array(N), qq = new Float64Array(N), pc = new Float64Array(N);
+  const alpha = new Float64Array(N), force = new Float64Array(N);
+
+  const S = { params: { power: 600, kBed: 2.5e-13, T0: 20, Tamb: 22 } };
+
+  function reset(params) {
+    if (params) Object.assign(S.params, params);
+    const P = S.params;
+    u.fill(0); w.fill(0); C.fill(0); p.fill(0); Sf.fill(0); Ss.fill(0); liq.fill(0); liqPrev.fill(0);
+    for (let c = 0; c < N; c++) {
+      const t = type[c];
+      T[c] = (t === BOIL || t === PATH) ? P.T0 : P.Tamb;
+      Ts[c] = P.Tamb + 3;
+      if (isBed[c]) { Sf[c] = 0.7 * S0; Ss[c] = 0.3 * S0; kperm[c] = P.kBed; }
+    }
+    S.t = 0; S.phase = 'heating'; S.heater = true;
+    S.boilVol = sumRange(capB, 1, 31); S.pathVol = sumRange(capP, 4, 31); S.pathBot = 0; S.poolVol = 0;
+    S.water0 = S.boilVol + S.pathVol;
+    const Vg0 = capBtot - S.boilVol;
+    S.nR = (PATM - psat(P.T0)) * Vg0 / (P.T0 + 273.15);
+    S.Pb = 0; S.Tsurf = P.T0; S.Tboil = P.T0; S.Tw = P.Tamb;
+    S.Qin = 0; S.Qout = 0; S.QoutS = 0; S.Tin = P.T0; S.Cin = 0; S.solids = 0; S.heatIn = 0;
+    S.delivered = 0; S.tFirst = null; S.tSputter = null; S.tDone = null; S.valve = false;
+    S.history = []; S.lastRec = -1; S.dt = 0.02; S.cgIters = 0; S.boilIntensity = new Float64Array(NR);
+    S.parts = []; S.drops = []; S.bubbles = []; S.steam = [];
+    S.poolT = P.Tamb; S.poolTDS = 0; S.dropAcc = 0;
+    updateMasks(true);
+    for (let k = 0; k < 900; k++) S.parts.push(spawnTracer());
+  }
+
+  // ---------- masks / free surfaces ----------
+  function updateMasks(first) {
+    liqPrev.set(liq);
+    const LB = level(capB, S.boilVol, 1, 45), LP = level(capP, S.pathVol, 4, 91);
+    const LPb = level(capP, S.pathBot, 4, 91), LQ = level(capQ, S.poolVol, 50, 106);
+    S.LB = LB; S.LP = LP; S.LPb = LPb; S.LQ = LQ;
+    S.zB = LB.z; S.zF = S.pathVol >= capPtot - 1e-12 ? 92 * H : LP.z; S.zBot = LPb.z; S.zQ = LQ.z;
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const c = id(i, j), t = type[c]; let L = 0;
+      if (t === BOIL) L = (j < LB.j || (j === LB.j && LB.f >= 0.5)) ? 1 : 0;
+      else if (t === PATH) {
+        const belowTop = j < LP.j || (j === LP.j && LP.f >= 0.5);
+        const aboveBot = j > LPb.j || (j === LPb.j && LPb.f < 0.5);
+        L = belowTop && aboveBot ? 1 : 0;
+      } else if (t === POOL) L = (j >= 50 && (j < LQ.j || (j === LQ.j && LQ.f >= 0.5))) ? 1 : 0;
+      liq[c] = L;
+    }
+    if (first) return;
+    // initialise newly wetted cells
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const c = id(i, j);
+      if (!liq[c] || liqPrev[c]) continue;
+      if (type[c] === POOL) {
+        const b = id(i, j - 1);
+        if (j > 50 && liq[b]) { T[c] = T[b]; C[c] = C[b]; } else { T[c] = S.Tin; C[c] = S.Cin; }
+      } else {
+        let src = -1;
+        for (let k = Math.min(i, NR - 1); k >= 0; k--) { const b = id(k, j - 1); if (liq[b] && type[b] !== SOLID) { src = b; break; } }
+        if (src >= 0) { T[c] = T[src]; C[c] = isBed[c] ? 0 : C[src]; }
+      }
+    }
+  }
+
+  function ghost(c, g) {
+    const t = type[c];
+    if (t === BOIL) return S.Pb + RHO * G * S.zB;
+    if (t === POOL) return RHO * G * S.zQ;
+    // PATH
+    if (type[g] === SPOUT) return RHO * G * ((Math.floor(g / NR) + 0.5) * H);
+    const jg = Math.floor(g / NR), jc = Math.floor(c / NR);
+    if (jg < jc) return S.Pb + RHO * G * S.zBot;
+    return RHO * G * S.zF;
+  }
+  const isFluidType = t => t === BOIL || t === PATH || t === POOL || t === SPOUT;
+
+  // ---------- interpolation ----------
+  function sampleU(r, z) {
+    let sgn = 1; if (r < 0) { r = -r; sgn = -1; }
+    let x = r / H, y = z / H - 0.5;
+    x = Math.min(Math.max(x, 0), NR - 1e-6); y = Math.min(Math.max(y, 0), NZ - 1 - 1e-6);
+    const i0 = Math.floor(x), j0 = Math.floor(y), fx = x - i0, fy = y - j0;
+    const a = u[ui(i0, j0)], b = u[ui(i0 + 1, j0)], c = u[ui(i0, j0 + 1)], d = u[ui(i0 + 1, j0 + 1)];
+    return sgn * ((a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy);
+  }
+  function sampleW(r, z) {
+    r = Math.abs(r);
+    let x = r / H - 0.5, y = z / H;
+    x = Math.min(Math.max(x, 0), NR - 1 - 1e-6); y = Math.min(Math.max(y, 0), NZ - 1e-6);
+    const i0 = Math.floor(x), j0 = Math.floor(y), fx = x - i0, fy = y - j0;
+    const a = w[wi(i0, j0)], b = w[wi(i0 + 1, j0)], c = w[wi(i0, j0 + 1)], d = w[wi(i0 + 1, j0 + 1)];
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+  }
+  function cellAt(r, z) {
+    const i = Math.floor(Math.abs(r) / H), j = Math.floor(z / H);
+    if (i < 0 || i >= NR || j < 0 || j >= NZ) return -1;
+    return id(i, j);
+  }
+  function sampleScalar(F, r, z, reg, fallback) {
+    r = Math.abs(r);
+    let x = r / H - 0.5, y = z / H - 0.5;
+    x = Math.min(Math.max(x, 0), NR - 1 - 1e-6); y = Math.min(Math.max(y, 0), NZ - 1 - 1e-6);
+    const i0 = Math.floor(x), j0 = Math.floor(y), fx = x - i0, fy = y - j0;
+    let s = 0, ws_ = 0;
+    const add = (i, j, wt) => { const c = id(i, j); if (wt > 0 && liq[c] && type[c] === reg) { s += F[c] * wt; ws_ += wt; } };
+    add(i0, j0, (1 - fx) * (1 - fy)); add(i0 + 1, j0, fx * (1 - fy)); add(i0, j0 + 1, (1 - fx) * fy); add(i0 + 1, j0 + 1, fx * fy);
+    return ws_ > 1e-9 ? s / ws_ : fallback;
+  }
+  function velAt(r, z, interstitial) {
+    let ur = sampleU(r, z), uz = sampleW(r, z);
+    if (interstitial) { const c = cellAt(r, z); if (c >= 0 && eps[c] < 1) { ur /= eps[c]; uz /= eps[c]; } }
+    return [ur, uz];
+  }
+
+  // ---------- face classification ----------
+  function classifyFaces(dt) {
+    for (let c = 0; c < N; c++) {
+      alpha[c] = kperm[c] === Infinity ? 0 : mu(T[c]) / (RHO * kperm[c]);
+    }
+    actU.fill(0); actW.fill(0); gU.fill(0); gW.fill(0); aU.fill(1); aW.fill(1);
+    for (let j = 0; j < NZ; j++) for (let i = 1; i < NR; i++) {
+      const a = id(i - 1, j), b = id(i, j);
+      if (!(liq[a] || liq[b])) continue;
+      if (!isFluidType(type[a]) || !isFluidType(type[b])) continue;
+      const al = liq[a] && liq[b] ? 0.5 * (alpha[a] + alpha[b]) : (liq[a] ? alpha[a] : alpha[b]);
+      const f = ui(i, j); actU[f] = 1; aU[f] = 1 + dt * al;
+      const A = 2 * Math.PI * i * H * H;
+      gU[f] = A * dt / (RHO * H * aU[f]);
+    }
+    for (let j = 1; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const a = id(i, j - 1), b = id(i, j);
+      if (!(liq[a] || liq[b])) continue;
+      if (!isFluidType(type[a]) || !isFluidType(type[b])) continue;
+      const al = liq[a] && liq[b] ? 0.5 * (alpha[a] + alpha[b]) : (liq[a] ? alpha[a] : alpha[b]);
+      const f = wi(i, j); actW[f] = 1; aW[f] = 1 + dt * al;
+      const A = 2 * Math.PI * rc[i] * H;
+      gW[f] = A * dt / (RHO * H * aW[f]);
+    }
+  }
+
+  // ---------- pressure (MIC(0)-PCG) ----------
+  // ghost value split: ghost = g0 + Pb*g1 (g1 = 1 when the gas is the boiler headspace)
+  function ghostUnit(c, g) {
+    const t = type[c];
+    if (t === BOIL) return 1;
+    if (t === PATH && type[g] !== SPOUT && Math.floor(g / NR) < Math.floor(c / NR)) return 1;
+    return 0;
+  }
+  const b1 = new Float64Array(N), p1 = new Float64Array(N), Asv = new Float64Array(N);
+  function buildPressure() {
+    Adiag.fill(0); Ai.fill(0); Aj.fill(0); bvec.fill(0); b1.fill(0);
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const c = id(i, j); if (!liq[c]) continue;
+      let div = 0, diag = 0, b = 0, bu = 0;
+      const gas = (n, gam) => { b += gam * ghost(c, n); bu += gam * ghostUnit(c, n); };
+      if (i + 1 < NR) {
+        const f = ui(i + 1, j);
+        if (actU[f]) { const A = 2 * Math.PI * (i + 1) * H * H; div += A * us[f] / aU[f]; diag += gU[f]; const n = id(i + 1, j); if (liq[n]) Ai[c] = -gU[f]; else gas(n, gU[f]); }
+      }
+      if (i > 0) {
+        const f = ui(i, j);
+        if (actU[f]) { const A = 2 * Math.PI * i * H * H; div -= A * us[f] / aU[f]; diag += gU[f]; const n = id(i - 1, j); if (!liq[n]) gas(n, gU[f]); }
+      }
+      if (j + 1 < NZ) {
+        const f = wi(i, j + 1);
+        if (actW[f]) { const A = 2 * Math.PI * rc[i] * H; div += A * ws[f] / aW[f]; diag += gW[f]; const n = id(i, j + 1); if (liq[n]) Aj[c] = -gW[f]; else gas(n, gW[f]); }
+      }
+      if (j > 0) {
+        const f = wi(i, j);
+        if (actW[f]) { const A = 2 * Math.PI * rc[i] * H; div -= A * ws[f] / aW[f]; diag += gW[f]; const n = id(i, j - 1); if (!liq[n]) gas(n, gW[f]); }
+      }
+      Adiag[c] = diag; bvec[c] = b - div; b1[c] = bu;
+    }
+    for (let c = 0; c < N; c++) if (liq[c] && Adiag[c] === 0) liq[c] = 0;
+    const tau = 0.97, sigma = 0.25;
+    pc.fill(0);
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const c = id(i, j); if (!liq[c]) continue;
+      let e = Adiag[c];
+      if (i > 0) { const l = c - 1; if (liq[l]) { const a = Ai[l] * pc[l]; e -= a * a + tau * Ai[l] * Aj[l] * pc[l] * pc[l]; } }
+      if (j > 0) { const d = c - NR; if (liq[d]) { const a = Aj[d] * pc[d]; e -= a * a + tau * Aj[d] * Ai[d] * pc[d] * pc[d]; } }
+      if (e < sigma * Adiag[c]) e = Adiag[c];
+      pc[c] = 1 / Math.sqrt(e);
+    }
+  }
+  function applyA(x, out) {
+    for (let c = 0; c < N; c++) {
+      if (!liq[c]) { out[c] = 0; continue; }
+      let v = Adiag[c] * x[c];
+      const i = c % NR;
+      if (i + 1 < NR && liq[c + 1]) v += Ai[c] * x[c + 1];
+      if (i > 0 && liq[c - 1]) v += Ai[c - 1] * x[c - 1];
+      if (c + NR < N && liq[c + NR]) v += Aj[c] * x[c + NR];
+      if (c - NR >= 0 && liq[c - NR]) v += Aj[c - NR] * x[c - NR];
+      out[c] = v;
+    }
+  }
+  function precond(r, z) {
+    for (let c = 0; c < N; c++) {
+      if (!liq[c]) { qq[c] = 0; continue; }
+      const i = c % NR;
+      let t = r[c];
+      if (i > 0 && liq[c - 1]) t -= Ai[c - 1] * pc[c - 1] * qq[c - 1];
+      if (c - NR >= 0 && liq[c - NR]) t -= Aj[c - NR] * pc[c - NR] * qq[c - NR];
+      qq[c] = t * pc[c];
+    }
+    for (let c = N - 1; c >= 0; c--) {
+      if (!liq[c]) { z[c] = 0; continue; }
+      const i = c % NR;
+      let t = qq[c];
+      if (i + 1 < NR && liq[c + 1]) t -= Ai[c] * pc[c] * z[c + 1];
+      if (c + NR < N && liq[c + NR]) t -= Aj[c] * pc[c] * z[c + NR];
+      z[c] = t * pc[c];
+    }
+  }
+  function pcg(b, x, tol) {
+    for (let c = 0; c < N; c++) if (!liq[c]) x[c] = 0;
+    applyA(x, ss);
+    for (let c = 0; c < N; c++) rr[c] = liq[c] ? b[c] - ss[c] : 0;
+    const resid = () => { let m = 0; for (let c = 0; c < N; c++) if (liq[c]) { const v = Math.abs(rr[c]) / Adiag[c]; if (v > m) m = v; } return m; };
+    if (resid() < tol) return 0;
+    precond(rr, zz); ss.set(zz);
+    let sigmaR = 0; for (let c = 0; c < N; c++) sigmaR += zz[c] * rr[c];
+    let it;
+    for (it = 1; it <= 400; it++) {
+      applyA(ss, Asv);
+      let d = 0; for (let c = 0; c < N; c++) d += ss[c] * Asv[c];
+      if (d <= 0) break;
+      const al = sigmaR / d;
+      for (let c = 0; c < N; c++) { x[c] += al * ss[c]; rr[c] -= al * Asv[c]; }
+      if (resid() < tol) break;
+      precond(rr, zz);
+      let sn = 0; for (let c = 0; c < N; c++) sn += zz[c] * rr[c];
+      const be = sn / sigmaR; sigmaR = sn;
+      for (let c = 0; c < N; c++) ss[c] = zz[c] + be * ss[c];
+    }
+    return it;
+  }
+  // inflow to the coffee path (boiler->tube, or gas->slug in the sputter phase) for a pressure field
+  function inflow(pa, Pb, unit, dt) {
+    const k = dt / (RHO * H); let Q = 0;
+    if (S.phase === 'sputter') {
+      for (let j = 4; j <= 91; j++) for (let i = 0; i < NR; i++) {
+        const c = id(i, j); if (!liq[c] || type[c] !== PATH) continue;
+        const bb = id(i, j - 1); if (liq[bb] || !isFluidType(type[bb])) continue;
+        const f = wi(i, j);
+        const g = unit ? 1 : S.Pb + RHO * G * S.zBot;
+        Q += ((unit ? 0 : ws[f]) - k * (pa[c] - g)) / aW[f] * 2 * Math.PI * rc[i] * H;
+      }
+    } else {
+      for (let i = 0; i < 5; i++) {
+        const f = wi(i, 4), a = id(i, 3), c = id(i, 4);
+        if (actW[f] && liq[a] && liq[c]) Q += ((unit ? 0 : ws[f]) - k * (pa[c] - pa[a])) / aW[f] * 2 * Math.PI * rc[i] * H;
+      }
+    }
+    return Q;
+  }
+  function solvePressure(dt) {
+    buildPressure();
+    for (let c = 0; c < N; c++) if (liq[c] && !liqPrev[c]) p[c] = S.Pb * 0.5;
+    S.cgIters = pcg(bvec, p, 1e-3);
+    if (S.phase !== 'done') {
+      // implicit coupling with the headspace air spring: dP/dV = P_air / Vg
+      pcg(b1, p1, 1e-9);
+      const Vg = capBtot - S.boilVol + S.pathBot;
+      const K = S.nR * (S.Tsurf + 273.15) / (Vg * Vg);
+      const Q0 = inflow(p, S.Pb, false, dt), Qu = inflow(p1, 1, true, dt);
+      const dP = -K * dt * Q0 / (1 + K * dt * Qu);
+      for (let c = 0; c < N; c++) if (liq[c]) p[c] += dP * p1[c];
+      S.Pb += dP;
+    }
+  }
+
+  function project(dt) {
+    const k = dt / (RHO * H);
+    for (let j = 0; j < NZ; j++) for (let i = 1; i < NR; i++) {
+      const f = ui(i, j); if (!actU[f]) { continue; }
+      const a = id(i - 1, j), b = id(i, j);
+      const pa = liq[a] ? p[a] : ghost(b, a), pb = liq[b] ? p[b] : ghost(a, b);
+      u[f] = (us[f] - k * (pb - pa)) / aU[f];
+    }
+    for (let j = 1; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const f = wi(i, j); if (!actW[f]) continue;
+      const a = id(i, j - 1), b = id(i, j);
+      const pa = liq[a] ? p[a] : ghost(b, a), pb = liq[b] ? p[b] : ghost(a, b);
+      w[f] = (ws[f] - k * (pb - pa)) / aW[f];
+    }
+  }
+
+  function extrapolate() {
+    // faces touching solid -> 0 ; gas–gas faces -> neighbour average
+    const known = new Uint8Array(u.length), knownW = new Uint8Array(w.length);
+    for (let j = 0; j < NZ; j++) for (let i = 0; i <= NR; i++) {
+      const f = ui(i, j);
+      if (actU[f]) { known[f] = 1; continue; }
+      const a = i > 0 ? type[id(i - 1, j)] : SOLID, b = i < NR ? type[id(i, j)] : SOLID;
+      if (i === 0 || !isFluidType(a) || !isFluidType(b)) { u[f] = 0; known[f] = 1; }
+    }
+    for (let j = 0; j <= NZ; j++) for (let i = 0; i < NR; i++) {
+      const f = wi(i, j);
+      if (actW[f]) { knownW[f] = 1; continue; }
+      const a = j > 0 ? type[id(i, j - 1)] : SOLID, b = j < NZ ? type[id(i, j)] : SOLID;
+      if (!isFluidType(a) || !isFluidType(b)) { w[f] = 0; knownW[f] = 1; }
+    }
+    for (let pass = 0; pass < 3; pass++) {
+      const nk = known.slice(), nkw = knownW.slice();
+      for (let j = 0; j < NZ; j++) for (let i = 0; i <= NR; i++) {
+        const f = ui(i, j); if (known[f]) continue;
+        let s = 0, n = 0;
+        if (i > 0 && known[f - 1] && actU[f - 1]) { s += u[f - 1]; n++; }
+        if (i < NR && known[f + 1] && actU[f + 1]) { s += u[f + 1]; n++; }
+        if (j > 0 && known[f - NR - 1]) { s += u[f - NR - 1]; n++; }
+        if (j < NZ - 1 && known[f + NR + 1]) { s += u[f + NR + 1]; n++; }
+        if (n) { u[f] = s / n; nk[f] = 1; } else u[f] = 0;
+      }
+      for (let j = 0; j <= NZ; j++) for (let i = 0; i < NR; i++) {
+        const f = wi(i, j); if (knownW[f]) continue;
+        let s = 0, n = 0;
+        if (i > 0 && knownW[f - 1]) { s += w[f - 1]; n++; }
+        if (i < NR - 1 && knownW[f + 1]) { s += w[f + 1]; n++; }
+        if (j > 0 && knownW[f - NR]) { s += w[f - NR]; n++; }
+        if (j < NZ && knownW[f + NR]) { s += w[f + NR]; n++; }
+        if (n) { w[f] = s / n; nkw[f] = 1; } else w[f] = 0;
+      }
+      known.set(nk); knownW.set(nkw);
+    }
+  }
+
+  // ---------- one time step ----------
+  function regionMeanT() {
+    const s = [0, 0, 0, 0], v = [0, 0, 0, 0];
+    for (let c = 0; c < N; c++) if (liq[c]) { const t = type[c], V = Vc[c % NR]; s[t] += T[c] * V; v[t] += V; }
+    return s.map((x, k) => v[k] ? x / v[k] : 0);
+  }
+
+  function thermo(dt) {
+    const P = S.params;
+    // boiler surface temperature (cells under the boiler free surface)
+    let st = 0, sv = 0, bt = 0, bv = 0;
+    for (let c = 0; c < N; c++) if (liq[c] && type[c] === BOIL) {
+      const V = Vc[c % NR]; bt += T[c] * V; bv += V;
+      const up = c + NR; if (up < N && type[up] === BOIL && !liq[up]) { st += T[c] * V; sv += V; }
+    }
+    S.Tsurf = sv ? st / sv : (bv ? bt / bv : S.Tsurf); S.Tboil = bv ? bt / bv : S.Tboil;
+    const Vg = capBtot - S.boilVol + S.pathBot;
+    if (S.phase === 'done') { S.Pb *= Math.exp(-dt / 1.5); S.valve = false; return; }
+    let Pabs = S.nR * (S.Tsurf + 273.15) / Vg + psat(S.Tsurf);
+    S.valve = false;
+    if (Pabs - PATM > VALVE) {
+      const air = Math.max(0, VALVE + PATM - psat(S.Tsurf));
+      S.nR = air * Vg / (S.Tsurf + 273.15); Pabs = VALVE + PATM; S.valve = true;
+    }
+    S.Pb = Pabs - PATM;
+  }
+
+  // explicit axisymmetric diffusion (effective turbulent diffusivity), within a region
+  const DF = new Float64Array(N);
+  function diffuse(F, dt, heat) {
+    DF.set(F);
+    for (let c = 0; c < N; c++) {
+      if (!liq[c]) continue;
+      const t = type[c];
+      const k = t === BOIL ? (heat ? 1e-5 : 2e-6) : t === POOL ? 4e-6 : (eps[c] < 1 ? 2e-7 : 2e-6);
+      const i = c % NR, ri = rc[i];
+      let s = 0;
+      const nb = (n, coef) => { if (liq[n] && type[n] === t) s += coef * (F[n] - F[c]); };
+      if (i + 1 < NR) nb(c + 1, (i + 1) * H / ri);
+      if (i > 0) nb(c - 1, i * H / ri);
+      if (c + NR < N) nb(c + NR, 1);
+      if (c - NR >= 0) nb(c - NR, 1);
+      DF[c] = F[c] + k * dt / (H * H) * s;
+    }
+    F.set(DF);
+  }
+
+  function step() {
+    const P = S.params;
+    // time step from CFL
+    let um = 1e-6;
+    for (let f = 0; f < u.length; f++) if (actU[f]) um = Math.max(um, Math.abs(u[f]));
+    for (let f = 0; f < w.length; f++) if (actW[f]) um = Math.max(um, Math.abs(w[f]));
+    const dt = Math.min(0.03, 1.2 * H / um);
+    S.dt = dt;
+
+    thermo(dt);
+    updateMasks(false);
+
+    // --- scalar advection (interstitial velocity in porous cells) ---
+    T2.set(T); C2.set(C);
+    for (let c = 0; c < N; c++) {
+      if (!liq[c]) continue;
+      const i = c % NR, j = (c - i) / NR, r = rc[i], z = (j + 0.5) * H, reg = type[c];
+      const v1 = velAt(r, z, true);
+      const rm = r - 0.5 * dt * v1[0], zm = z - 0.5 * dt * v1[1];
+      const v2 = velAt(rm, zm, true);
+      const rb = r - dt * v2[0], zb = z - dt * v2[1];
+      T2[c] = sampleScalar(T, rb, zb, reg, T[c]);
+      C2[c] = sampleScalar(C, rb, zb, reg, C[c]);
+    }
+    T.set(T2); C.set(C2);
+
+    // --- heat input, subcooled boiling, bed exchange, extraction ---
+    const Tsat = tsat(S.Pb + PATM);
+    S.Tsat = Tsat;
+    S.boilIntensity.fill(0);
+    if (S.heater && S.phase !== 'done') {
+      const q = P.power / (Math.PI * Math.pow(29 * H, 2));
+      const dT = q / (RHO * CP * H) * dt;
+      for (let i = 0; i < 29; i++) { const c = id(i, 1); if (liq[c]) T[c] += dT; }
+      S.heatIn += P.power * dt;
+    }
+    let leftover = 0;
+    for (let i = 0; i < 29; i++) {
+      let carry = 0;
+      for (let j = 1; j <= 91; j++) {
+        const c = id(i, j); if (!liq[c] || (type[c] !== BOIL && type[c] !== PATH) || isBed[c]) break;
+        T[c] += carry; carry = 0;
+        if (T[c] > Tsat) { carry = T[c] - Tsat; T[c] = Tsat; if (j <= 2) S.boilIntensity[i] += carry; }
+      }
+      leftover += carry * Vc[i];
+    }
+    if (leftover > 0) {
+      let v = 0; for (let c = 0; c < N; c++) if (liq[c] && type[c] === BOIL && T[c] < Tsat) v += Vc[c % NR];
+      if (v > 0) for (let c = 0; c < N; c++) if (liq[c] && type[c] === BOIL && T[c] < Tsat) T[c] = Math.min(Tsat, T[c] + leftover / v);
+    }
+    diffuse(T, dt, true); diffuse(C, dt, false);
+    const fx = 1 - Math.exp(-dt / 1.0);
+    for (let c = 0; c < N; c++) {
+      if (!liq[c] || !(isBed[c] || isPlate[c])) continue;
+      const Cf = RHO * CP * eps[c], Cs = CS_BED;
+      const Teq = (Cf * T[c] + Cs * Ts[c]) / (Cf + Cs);
+      T[c] += (Teq - T[c]) * fx; Ts[c] += (Teq - Ts[c]) * fx;
+      if (isBed[c]) {
+        const arr = Math.exp(0.03 * (T[c] - 90)), drive = Math.max(0, CSAT - C[c]);
+        let df = KF * arr * (Sf[c] / (0.7 * S0)) * drive * dt; if (df > Sf[c]) df = Sf[c];
+        let ds = KS * arr * (Ss[c] / (0.3 * S0)) * drive * dt; if (ds > Ss[c]) ds = Ss[c];
+        Sf[c] -= df; Ss[c] -= ds; C[c] = Math.min(CSAT, C[c] + (df + ds) / eps[c]);
+      }
+    }
+    // flash evaporation: liquid in the path / upper chamber cannot exceed local saturation temperature
+    S.flash = 0;
+    for (let c = 0; c < N; c++) {
+      if (!liq[c] || (type[c] !== PATH && type[c] !== POOL)) continue;
+      const j = Math.floor(c / NR), pgauge = type[c] === POOL ? 0 : Math.max(0, p[c] - RHO * G * (j + 0.5) * H);
+      const ts = type[c] === POOL ? 100 : tsat(PATM + pgauge);
+      if (T[c] > ts) { if (j >= 80) S.flash += T[c] - ts; T[c] = ts; }
+    }
+    // conduction through the thin funnel wall (tube, cone, basket) between boiler water and path water
+    for (let j = 4; j <= 45; j++) {
+      const ia = Rin(j) - 1, ib = Math.max(Rin(j), Rin(j + 1)) + 1;
+      const a = id(ia, j), b = id(ib, j);
+      if (!liq[a] || !liq[b] || type[b] !== BOIL) continue;
+      const A = 2 * Math.PI * (Rin(j) + 0.5) * H * H;
+      const Q = 1500 * A * (T[b] - T[a]) * dt;
+      const Ca = RHO * CP * Vc[ia] * eps[a] + (isBed[a] ? CS_BED * Vc[ia] : 0), Cb = RHO * CP * Vc[ib];
+      const lim = 0.5 * (T[b] - T[a]) * Ca * Cb / (Ca + Cb);
+      const q = Math.abs(Q) > Math.abs(lim) ? lim : Q;
+      T[a] += q / Ca; T[b] -= q / Cb; if (isBed[a]) Ts[a] += q / Ca;
+    }
+    // upper chamber wall cooling
+    let qw = 0;
+    for (let j = 50; j <= 106; j++) for (let i = 4; i <= 28; i++) {
+      const c = id(i, j); if (!liq[c]) continue;
+      let A = 0;
+      if (i === 28) A += 2 * Math.PI * 29 * H * H;
+      if (j === 50) A += 2 * Math.PI * rc[i] * H;
+      if (!A) continue;
+      const Q = U_WALL * A * (T[c] - S.Tw) * dt;
+      T[c] -= Q / (RHO * CP * Vc[i]); qw += Q;
+    }
+    // column wall (part of the upper casting) also draws heat from the rising coffee
+    for (let j = 50; j <= 91; j++) {
+      const c = id(2, j); if (!liq[c]) continue;
+      const Q = 1500 * 2 * Math.PI * 3 * H * H * (T[c] - S.Tw) * dt;
+      T[c] -= Q / (RHO * CP * Vc[2]); qw += Q;
+    }
+    // evaporative / convective loss from the free surface of the coffee in the upper chamber
+    if (S.poolVol > 0) for (let i = 4; i <= 28; i++) {
+      let top = -1; for (let j = 89; j >= 50; j--) if (liq[id(i, j)]) { top = id(i, j); break; }
+      if (top < 0) continue;
+      T[top] -= 600 * 2 * Math.PI * rc[i] * H * (T[top] - P.Tamb) * dt / (RHO * CP * Vc[i]);
+    }
+    S.Tw += qw / CW_TOP - (S.Tw - P.Tamb) * 0.002 * dt;
+
+    // --- momentum: advect, viscosity, buoyancy, forcing ---
+    const Tref = regionMeanT();
+    us.set(u); ws.set(w);
+    for (let j = 0; j < NZ; j++) for (let i = 1; i < NR; i++) {
+      const f = ui(i, j); if (!actU[f]) continue;
+      const r = i * H, z = (j + 0.5) * H;
+      const a = [u[f], sampleW(r, z)];
+      const b = [sampleU(r - 0.5 * dt * a[0], z - 0.5 * dt * a[1]), sampleW(r - 0.5 * dt * a[0], z - 0.5 * dt * a[1])];
+      let v = sampleU(r - dt * b[0], z - dt * b[1]);
+      const e = i + 1 <= NR ? u[f + 1] : 0, wv = u[f - 1];
+      const n = j + 1 < NZ ? u[f + NR + 1] : 0, s = j > 0 ? u[f - NR - 1] : 0;
+      v += NU * dt * ((e + wv + n + s - 4 * u[f]) / (H * H) + (e - wv) / (2 * H * r) - u[f] / (r * r));
+      us[f] = v;
+    }
+    for (let j = 1; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const f = wi(i, j); if (!actW[f]) continue;
+      const r = rc[i], z = j * H;
+      const a = [sampleU(r, z), w[f]];
+      const b = [sampleU(r - 0.5 * dt * a[0], z - 0.5 * dt * a[1]), sampleW(r - 0.5 * dt * a[0], z - 0.5 * dt * a[1])];
+      let v = sampleW(r - dt * b[0], z - dt * b[1]);
+      const e = i + 1 < NR ? w[f + 1] : 0, wv = i > 0 ? w[f - 1] : w[f];
+      const n = j + 1 <= NZ ? w[f + NR] : 0, s = w[f - NR];
+      v += NU * dt * ((e + wv + n + s - 4 * w[f]) / (H * H) + (e - wv) / (2 * H * r));
+      const ca = id(i, j - 1), cb = id(i, j);
+      let tf, nn = 0, reg = 0; tf = 0;
+      if (liq[ca]) { tf += T[ca]; nn++; reg = type[ca]; }
+      if (liq[cb]) { tf += T[cb]; nn++; reg = type[cb]; }
+      if (nn) { tf /= nn; v += G * beta(tf) * (tf - Tref[reg]) * dt; }
+      v -= (force[ca] + force[cb]) * 0.5 * dt;
+      ws[f] = v;
+    }
+    force.fill(0);
+
+    classifyFaces(dt);
+    solvePressure(dt);
+    project(dt);
+
+    // --- fluxes and free-surface kinematics ---
+    let Qin = 0;
+    if (S.phase === 'sputter') {
+      for (let j = 4; j <= 91; j++) for (let i = 0; i < NR; i++) {
+        const c = id(i, j); if (!liq[c] || type[c] !== PATH) continue;
+        const b = id(i, j - 1); if (liq[b] || !isFluidType(type[b])) continue;
+        Qin += w[wi(i, j)] * 2 * Math.PI * rc[i] * H;
+      }
+      Qin = Math.max(0, Qin);
+      S.pathBot += Qin * dt;
+    } else {
+      for (let i = 0; i < 5; i++) { const f = wi(i, 4); if (actW[f] && liq[id(i, 3)] && liq[id(i, 4)]) Qin += w[f] * 2 * Math.PI * rc[i] * H; }
+      S.boilVol -= Qin * dt;
+    }
+    S.Qin = Qin;
+    S.pathVol += Qin * dt;
+    let over = 0;
+    if (S.pathVol > capPtot) { over = S.pathVol - capPtot; S.pathVol = capPtot; }
+    if (S.pathVol < 0) S.pathVol = 0;
+
+    // outflow state at the spout
+    let qt = 0, qT = 0, qC = 0;
+    for (const j of [90, 91]) {
+      const f = ui(3, j), c = id(2, j);
+      if (actU[f] && liq[c] && u[f] > 0) { const q = u[f] * 2 * Math.PI * 3 * H * H; qt += q; qT += q * T[c]; qC += q * C[c]; }
+    }
+    if (qt > 0) { S.Tin = qT / qt; S.Cin = qC / qt; }
+    else if (liq[id(2, 91)]) { S.Tin = T[id(2, 91)]; S.Cin = C[id(2, 91)]; }
+
+    // phase transitions
+    if (S.phase === 'heating' && S.Pb > 50) S.phase = 'pressurising';
+    if (over > 0 && S.tFirst === null) { S.tFirst = S.t; if (S.phase !== 'sputter') S.phase = 'extraction'; }
+    if (S.phase !== 'sputter' && S.phase !== 'done') {
+      const cut = sumRange(capB, 1, 2) + 0.5 * capB[3];
+      if (S.boilVol < cut) { S.phase = 'sputter'; S.tSputter = S.t; }
+    }
+    if (S.phase === 'sputter' && S.LPb && S.LPb.j >= 46) {
+      // slug cleared the puck: blow out what is left above it
+      const rest = Math.max(0, S.pathVol - Math.max(S.pathBot, sumRange(capP, 4, 45)));
+      over += rest; S.pathBot = S.pathVol;
+      S.phase = 'done'; S.tDone = S.t; S.heater = false;
+      for (let k = 0; k < 40; k++) S.steam.push({ r: 4 * H, z: 91 * H, vr: 0.05 + Math.random() * 0.15, vz: 0.05 + Math.random() * 0.1, age: 0, side: Math.random() < 0.5 ? -1 : 1 });
+    }
+    if (S.phase === 'done' && S.t - S.tDone < 6 && Math.random() < 0.5) S.steam.push({ r: 4 * H, z: 91 * H, vr: 0.02 + Math.random() * 0.06, vz: 0.03 + Math.random() * 0.05, age: 0, side: Math.random() < 0.5 ? -1 : 1 });
+
+    if (over > 0) {
+      // coffee into the upper chamber: mixes where the stream runs down the column
+      const room = capQtot - S.poolVol, add = Math.min(over, room);
+      const band = [];
+      for (let i = 4; i <= 7; i++) { let n = 0; for (let j = 89; j >= 50 && n < 2; j--) { const c = id(i, j); if (liq[c]) { band.push(c); n++; } } }
+      if (band.length) {
+        const share = add / band.length;
+        for (const c of band) {
+          const V = Vc[c % NR];
+          T[c] = (T[c] * V + S.Tin * share) / (V + share);
+          C[c] = (C[c] * V + S.Cin * share) / (V + share);
+          force[c] += Math.min(1.5, (over / dt) * 0.5 / (band.length * V));
+        }
+      }
+      S.poolVol += add; S.delivered += add; S.solids += add * S.Cin;
+      S.dropAcc += add;
+    }
+    const tau = 1.0, aS = 1 - Math.exp(-dt / tau);
+    S.Qout = over / dt; S.QoutS += (S.Qout - S.QoutS) * aS;
+
+    extrapolate();
+    particles(dt);
+
+    // pool averages
+    let pv = 0, pT = 0, pC = 0;
+    for (let c = 0; c < N; c++) if (liq[c] && type[c] === POOL) { const V = Vc[c % NR]; pv += V; pT += T[c] * V; pC += C[c] * V; }
+    if (pv > 0) { S.poolT = pT / pv; S.poolTDS = pC / pv / 10; }
+
+    S.t += dt;
+    if (S.t - S.lastRec >= 0.5) {
+      S.lastRec = S.t;
+      S.history.push({ t: S.t, P: S.Pb / 1e5, Q: S.QoutS * 1e6, Tb: S.Tboil, Tout: S.tFirst !== null && S.phase !== 'done' ? S.Tin : null, TDS: S.tFirst !== null && S.phase !== 'done' ? S.Cin / 10 : null, V: S.delivered * 1e6 });
+    }
+  }
+
+  // ---------- particles (tracers, bubbles, jet drops, steam) ----------
+  let liqList = [];
+  function spawnTracer() {
+    if (!liqList.length || Math.random() < 0.02) { liqList = []; for (let c = 0; c < N; c++) if (liq[c]) liqList.push(c); }
+    const c = liqList[(Math.random() * liqList.length) | 0];
+    if (c === undefined) return { r: 0, z: 0, side: 1, age: 0, dead: true };
+    const i = c % NR, j = (c - i) / NR;
+    return { r: (i + Math.random()) * H, z: (j + Math.random()) * H, side: Math.random() < 0.5 ? -1 : 1, age: 0, life: 4 + Math.random() * 8 };
+  }
+  function particles(dt) {
+    liqList = []; for (let c = 0; c < N; c++) if (liq[c]) liqList.push(c);
+    for (let k = 0; k < S.parts.length; k++) {
+      const q = S.parts[k];
+      const v1 = velAt(q.r, q.z, true), v2 = velAt(q.r + 0.5 * dt * v1[0], q.z + 0.5 * dt * v1[1], true);
+      q.r += dt * v2[0]; q.z += dt * v2[1]; q.age += dt;
+      if (q.r < 0) q.r = -q.r;
+      const c = cellAt(q.r, q.z);
+      if (c < 0 || !liq[c] || q.age > q.life || q.dead) S.parts[k] = spawnTracer();
+    }
+    // nucleate boiling bubbles
+    for (let i = 0; i < 29; i++) {
+      if (S.boilIntensity[i] > 0 && S.bubbles.length < 220 && Math.random() < Math.min(1, S.boilIntensity[i] * 3))
+        S.bubbles.push({ r: (i + Math.random()) * H, z: 1.2 * H, side: Math.random() < 0.5 ? -1 : 1, age: 0 });
+    }
+    S.bubbles = S.bubbles.filter(b => {
+      const v = velAt(b.r, b.z, false);
+      b.r += v[0] * dt; b.z += (v[1] + 0.12) * dt; b.age += dt;
+      const c = cellAt(b.r, b.z);
+      if (c < 0 || !liq[c]) return false;
+      return T[c] > S.Tsat - 4 || b.age < 0.15;
+    });
+    // jet drops (visual)
+    const vout = Math.min(0.6, Math.max(0.04, S.Qout / A_HOLES));
+    while (S.dropAcc > 0.04e-6 && S.drops.length < 300) {
+      S.dropAcc -= 0.04e-6;
+      S.drops.push({ r: 4 * H, z: (90 + Math.random() * 2) * H, vr: vout * (0.6 + 0.4 * Math.random()), vz: (S.phase === 'sputter' ? 0.15 : 0.02) * Math.random(), side: Math.random() < 0.5 ? -1 : 1 });
+    }
+    if (S.dropAcc > 0.04e-6) S.dropAcc = 0;
+    S.drops = S.drops.filter(d => {
+      d.vz -= G * dt; d.r += d.vr * dt; d.z += d.vz * dt;
+      if (d.r > 28.6 * H) { d.r = 28.6 * H; d.vr = -0.2 * d.vr; }
+      return d.z > Math.max(S.zQ, 50 * H);
+    });
+    S.steam = S.steam.filter(s => { s.age += dt; s.r += s.vr * dt; s.z += s.vz * dt; s.vr *= 0.98; return s.age < 2.5 && s.z < 106 * H; });
+  }
+
+  // ---------- derived fields for rendering ----------
+  function speedField(out) {
+    for (let j = 0; j < NZ; j++) for (let i = 0; i < NR; i++) {
+      const c = id(i, j);
+      if (!liq[c]) { out[c] = 0; continue; }
+      const ur = 0.5 * (u[ui(i, j)] + u[ui(i + 1, j)]), uz = 0.5 * (w[wi(i, j)] + w[wi(i, j + 1)]);
+      out[c] = Math.hypot(ur, uz) / eps[c];
+    }
+    return out;
+  }
+  function gaugeField(out) {
+    for (let c = 0; c < N; c++) { const j = Math.floor(c / NR); out[c] = liq[c] ? p[c] - RHO * G * (j + 0.5) * H : 0; }
+    return out;
+  }
+
+  Object.assign(S, {
+    NR, NZ, H, N, SOLID, BOIL, PATH, POOL, SPOUT, OUT, type, liq, T, C, Ts, Sf, Ss, isBed, isPlate, eps,
+    reset, step, speedField, gaugeField, DOSE, capPtot, capQtot, capBtot, psat, tsat, mu,
+    get u() { return u; }, get w() { return w; }
+  });
+  root.MokaSim = S;
+  if (typeof module !== 'undefined') module.exports = S;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+</script>
+<script>
+(function () {
+  const S = window.MokaSim;
+  const { NR, NZ, H } = S;
+  const view = document.getElementById('view'), ctx = view.getContext('2d');
+  const COLS = 61, ROWS = 108;
+  const off = document.createElement('canvas'); off.width = COLS; off.height = ROWS;
+  const octx = off.getContext('2d'); const img = octx.createImageData(COLS, ROWS);
+
+  // ---------- colour maps ----------
+  const hex = h => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+  const maps = {
+    T: ['#000004', '#320a5e', '#781c6d', '#bc3754', '#ed6925', '#fbb61a', '#fcffa4'].map(hex),
+    U: ['#440154', '#3b528b', '#21918c', '#5ec962', '#fde725'].map(hex),
+    P: ['#00204c', '#31446b', '#666970', '#958f78', '#cbba69', '#ffea46'].map(hex),
+    C: ['#bcd4e6', '#cfae82', '#9a6535', '#61391a', '#33200f', '#160c06'].map(hex)
+  };
+  const lut = {};
+  for (const k in maps) {
+    const st = maps[k], L = new Uint8Array(256 * 3);
+    for (let n = 0; n < 256; n++) {
+      const x = n / 255 * (st.length - 1), a = Math.min(Math.floor(x), st.length - 2), f = x - a;
+      for (let ch = 0; ch < 3; ch++) L[n * 3 + ch] = Math.round(st[a][ch] * (1 - f) + st[a + 1][ch] * f);
+    }
+    lut[k] = L;
+  }
+  const grad = k => 'linear-gradient(90deg,' + maps[k].map(c => `rgb(${c})`).join(',') + ')';
+
+  let field = 'T', tracers = true, running = true, speed = 6;
+  const spd = new Float64Array(S.N), pg = new Float64Array(S.N);
+  let range = { T: [20, 120], U: [0, 0.06], P: [0, 1], C: [0, 4] };
+
+  function setCbar() {
+    document.getElementById('cbBar').style.background = grad(field);
+    const r = range[field];
+    const fmt = { T: v => v.toFixed(0), U: v => (v * 100).toFixed(1), P: v => (v / 1e3).toFixed(1), C: v => v.toFixed(0) };
+    const unit = { T: ' °C', U: ' cm/s (√ scale)', P: ' kPa gauge', C: ' % TDS (√ scale)' };
+    document.getElementById('cbMin').textContent = fmt[field](r[0]);
+    document.getElementById('cbMax').textContent = fmt[field](r[1]) + unit[field];
+  }
+
+  // ---------- rendering ----------
+  function render() {
+    const W = view.width, Hh = view.height, px = W / COLS;
+    if (field === 'U') S.speedField(spd);
+    if (field === 'P') { S.gaugeField(pg); range.P = [0, Math.max(2000, S.Pb * 1.05 + 1500)]; setCbar(); }
+    const L = lut[field], d = img.data;
+    for (let row = 0; row < ROWS; row++) {
+      const j = ROWS - 1 - row;
+      for (let col = 0; col < COLS; col++) {
+        const i = Math.abs(col - 30), o = (row * COLS + col) * 4;
+        if (i >= NR) { d[o + 3] = 0; continue; }
+        const c = i + j * NR, t = S.type[c];
+        let r = 11, g = 11, b = 10, a = 255;
+        if (S.liq[c]) {
+          let v;
+          if (field === 'T') v = (S.T[c] - range.T[0]) / (range.T[1] - range.T[0]);
+          else if (field === 'U') v = Math.sqrt(spd[c] / range.U[1]);
+          else if (field === 'P') v = (pg[c] - range.P[0]) / (range.P[1] - range.P[0]);
+          else v = Math.sqrt((S.C[c] / 10) / range.C[1]);
+          const n = Math.max(0, Math.min(255, Math.round(v * 255))) * 3;
+          r = L[n]; g = L[n + 1]; b = L[n + 2];
+        } else if (t === S.SOLID) { r = 98; g = 102; b = 108; }
+        else if (t === S.OUT) { a = 0; }
+        else if (t === S.BOIL || (t === S.PATH && j < 33 && S.phase === 'sputter')) { r = 38; g = 44; b = 52; }
+        else if (S.isBed[c]) { r = 74; g = 52; b = 34; }
+        else { r = 22; g = 22; b = 21; }
+        d[o] = r; d[o + 1] = g; d[o + 2] = b; d[o + 3] = a;
+      }
+    }
+    octx.putImageData(img, 0, 0);
+    ctx.clearRect(0, 0, W, Hh);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(off, 0, 0, W, ROWS * px);
+    // crisp metal + bed texture
+    const X = (col) => col * px, Y = (j) => (ROWS - 1 - j) * px;
+    for (let j = 0; j < ROWS; j++) for (let col = 0; col < COLS; col++) {
+      const i = Math.abs(col - 30); if (i >= NR) continue;
+      const c = i + j * NR;
+      if (S.type[c] === S.SOLID) { ctx.fillStyle = '#6a6e75'; ctx.fillRect(X(col), Y(j), px + 0.5, px + 0.5); }
+      else if (S.isBed[c] && ((col + j) % 2 === 0)) { ctx.fillStyle = S.liq[c] ? 'rgba(40,24,12,.28)' : 'rgba(120,84,52,.55)'; ctx.fillRect(X(col) + px * .3, Y(j) + px * .3, px * .35, px * .35); }
+      else if (S.isPlate[c] && col % 2 === 0) { ctx.fillStyle = '#6a6e75'; ctx.fillRect(X(col), Y(j) + px * .35, px, px * .3); }
+    }
+    // stove flame glow
+    if (S.heater && S.phase !== 'done') {
+      const pw = S.params.power / 1200;
+      const gr = ctx.createLinearGradient(0, Y(0) + px, 0, Y(0) + px * 3);
+      gr.addColorStop(0, `rgba(255,120,40,${0.35 + 0.5 * pw})`); gr.addColorStop(1, 'rgba(255,120,40,0)');
+      ctx.fillStyle = gr; ctx.fillRect(X(1), Y(0) + px, X(60) - X(1), px * 2);
+    }
+    const toXY = (r, z, side) => [X(30) + px / 2 + side * (r / H) * px - (side < 0 ? 0 : 0), (ROWS - z / H) * px];
+    // tracers
+    if (tracers) {
+      ctx.fillStyle = field === 'U' ? 'rgba(255,255,255,.7)' : 'rgba(255,255,255,.35)';
+      for (const q of S.parts) { const [x, y] = toXY(q.r, q.z, q.side); ctx.fillRect(x - 0.9, y - 0.9, 1.8, 1.8); }
+    }
+    // bubbles
+    ctx.strokeStyle = 'rgba(235,240,255,.85)'; ctx.lineWidth = 1;
+    for (const b of S.bubbles) { const [x, y] = toXY(b.r, b.z, b.side); ctx.beginPath(); ctx.arc(x, y, 1.6 + Math.min(2, b.age * 6), 0, 6.283); ctx.stroke(); }
+    // jet drops
+    const cc = Math.min(255, Math.round(Math.sqrt(S.Cin / 10 / 4) * 255)) * 3, Lc = lut.C;
+    ctx.fillStyle = `rgb(${Lc[cc]},${Lc[cc + 1]},${Lc[cc + 2]})`;
+    for (const dd of S.drops) { const [x, y] = toXY(dd.r, dd.z, dd.side); ctx.beginPath(); ctx.arc(x, y, 1.8, 0, 6.283); ctx.fill(); }
+    for (const s of S.steam) { const [x, y] = toXY(s.r, s.z, s.side); ctx.fillStyle = `rgba(220,220,215,${0.35 * (1 - s.age / 2.5)})`; ctx.beginPath(); ctx.arc(x, y, 3 + s.age * 8, 0, 6.283); ctx.fill(); }
+    // labels
+    ctx.font = `500 ${Math.max(10, px * 1.8)}px Inter`; ctx.fillStyle = 'rgba(240,239,236,.62)';
+    ctx.textAlign = 'left'; ctx.fillText('Upper chamber', X(3), Y(104));
+    ctx.fillText('Boiler', X(2), Y(28));
+    ctx.fillText('Column', X(35), Y(97));
+    ctx.fillText('Funnel', X(37), Y(12));
+    ctx.textAlign = 'center'; ctx.fillText('Coffee puck', X(30) + px / 2, Y(39));
+    // probe marker
+    if (probe) { const [x, y] = [probe.x, probe.y]; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 6, 0, 6.283); ctx.moveTo(x - 10, y); ctx.lineTo(x + 10, y); ctx.moveTo(x, y - 10); ctx.lineTo(x, y + 10); ctx.stroke(); updateProbe(); }
+  }
+  function fitCanvas() {
+    const w = view.clientWidth || 400, dpr = Math.min(2, window.devicePixelRatio || 1);
+    view.width = Math.round(w * dpr); view.height = Math.round(w * dpr * ROWS / COLS);
+  }
+
+  // ---------- probe ----------
+  let probe = null; const probeEl = document.getElementById('probe');
+  function updateProbe() {
+    const W = view.width, px = W / COLS, sc = view.clientWidth / W;
+    const col = Math.floor(probe.x / px), j = ROWS - 1 - Math.floor(probe.y / px), i = Math.abs(col - 30);
+    let txt;
+    if (i >= NR || j < 0 || j >= NZ) txt = 'outside the pot';
+    else {
+      const c = i + j * NR, t = S.type[c];
+      const where = S.isBed[c] ? 'coffee bed' : S.isPlate[c] ? 'filter plate' : t === S.SOLID ? 'metal wall' : t === S.BOIL ? 'boiler' : t === S.POOL ? 'upper chamber' : t === S.SPOUT ? 'spout' : t === S.PATH ? (j >= 48 ? 'column' : 'funnel') : 'outside';
+      if (S.liq[c]) {
+        S.speedField(spd); S.gaugeField(pg);
+        txt = `${where} · r=${((i + .5) * H * 1000).toFixed(1)} z=${((j + .5) * H * 1000).toFixed(1)} mm\nT   ${S.T[c].toFixed(1)} °C\n|u| ${(spd[c] * 1000).toFixed(2)} mm/s\np   ${(pg[c] / 1000).toFixed(2)} kPa g\nTDS ${(S.C[c] / 10).toFixed(2)} %` + (S.isBed[c] ? `\nsolubles left ${(100 * (S.Sf[c] + S.Ss[c]) / 120).toFixed(0)} %` : '');
+      } else txt = where + (t === S.BOIL ? ' · headspace (air + vapour)\np ' + (S.Pb / 1000).toFixed(2) + ' kPa g' : t === S.SOLID ? '' : ' · air');
+    }
+    probeEl.textContent = txt; probeEl.style.whiteSpace = 'pre'; probeEl.style.display = 'block';
+    const bx = probe.x * sc + 12, by = probe.y * sc + 12;
+    const maxX = view.clientWidth - probeEl.offsetWidth;
+    probeEl.style.left = Math.min(bx, maxX) + 'px'; probeEl.style.top = Math.min(by, view.clientHeight - probeEl.offsetHeight) + 'px';
+  }
+  view.addEventListener('pointerdown', e => {
+    const rct = view.getBoundingClientRect(), s = view.width / rct.width;
+    const p = { x: (e.clientX - rct.left) * s, y: (e.clientY - rct.top) * s };
+    if (probe && Math.hypot(p.x - probe.x, p.y - probe.y) < 14 * s) { probe = null; probeEl.style.display = 'none'; return; }
+    probe = p; updateProbe();
+  });
+
+  // ---------- charts ----------
+  function makeChart(id, series, yfmt) {
+    const cv = document.getElementById(id), tip = cv.parentElement.querySelector('.tip');
+    const st = { cv, tip, series, yfmt, hover: null };
+    const pos = e => { const r = cv.getBoundingClientRect(); return e.clientX - r.left; };
+    cv.addEventListener('pointermove', e => { st.hover = pos(e); drawChart(st); });
+    cv.addEventListener('pointerdown', e => { st.hover = pos(e); drawChart(st); });
+    cv.addEventListener('pointerleave', () => { st.hover = null; tip.style.display = 'none'; drawChart(st); });
+    return st;
+  }
+  function niceMax(v) { if (v <= 0) return 1; const e = Math.pow(10, Math.floor(Math.log10(v))); const m = v / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * e; }
+  function drawChart(st) {
+    const cv = st.cv, dpr = Math.min(2, window.devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+    if (cv.width !== Math.round(w * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+    const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0); c.clearRect(0, 0, w, h);
+    const hist = S.history, L = 34, R = 8, T = 6, B = 18, pw = w - L - R, ph = h - T - B;
+    const tmax = Math.max(30, niceMax(hist.length ? hist[hist.length - 1].t : 30));
+    let ymax = 0, ymin = 0;
+    for (const s of st.series) for (const p of hist) { const v = p[s.key]; if (v != null && v > ymax) ymax = v; }
+    if (st.series[0].fixed) { ymin = st.series[0].fixed[0]; ymax = Math.max(st.series[0].fixed[1], ymax); }
+    ymax = niceMax(ymax || 1);
+    const xs = t => L + t / tmax * pw, ys = v => T + ph - (v - ymin) / (ymax - ymin) * ph;
+    c.font = '11px Inter'; c.fillStyle = '#8f8e86'; c.strokeStyle = '#2f2f2c'; c.lineWidth = 1;
+    for (let k = 0; k <= 4; k++) { const v = ymin + (ymax - ymin) * k / 4, y = ys(v); c.beginPath(); c.moveTo(L, y); c.lineTo(L + pw, y); c.stroke(); c.textAlign = 'right'; c.fillText(st.yfmt(v), L - 5, y + 3.5); }
+    c.textAlign = 'center';
+    for (let k = 0; k <= 4; k++) { const t = tmax * k / 4; c.fillText(t.toFixed(0) + (k === 4 ? ' s' : ''), Math.min(xs(t), L + pw - 8), h - 4); }
+    for (const s of st.series) {
+      c.strokeStyle = s.color; c.lineWidth = 2; c.lineJoin = 'round'; c.beginPath(); let pen = false;
+      for (const p of hist) { const v = p[s.key]; if (v == null) { pen = false; continue; } const x = xs(p.t), y = ys(v); if (!pen) { c.moveTo(x, y); pen = true; } else c.lineTo(x, y); }
+      c.stroke();
+    }
+    if (st.hover != null && hist.length) {
+      const t = (st.hover - L) / pw * tmax; let best = hist[0];
+      for (const p of hist) if (Math.abs(p.t - t) < Math.abs(best.t - t)) best = p;
+      const x = xs(best.t); c.strokeStyle = '#c3c2b7'; c.lineWidth = 1; c.beginPath(); c.moveTo(x, T); c.lineTo(x, T + ph); c.stroke();
+      let lines = [`t = ${best.t.toFixed(1)} s`];
+      for (const s of st.series) { const v = best[s.key]; if (v == null) continue; c.fillStyle = s.color; c.strokeStyle = '#232321'; c.lineWidth = 2; c.beginPath(); c.arc(x, ys(v), 4.5, 0, 6.283); c.fill(); c.stroke(); lines.push(`${s.name}: ${st.yfmt(v, true)}`); }
+      st.tip.textContent = lines.join('\n'); st.tip.style.whiteSpace = 'pre'; st.tip.style.display = 'block';
+      const tw = st.tip.offsetWidth; st.tip.style.left = Math.max(4, Math.min(x + 10, w - tw - 2)) + 'px'; st.tip.style.top = '28px';
+    }
+  }
+  const css = getComputedStyle(document.documentElement);
+  const c1 = css.getPropertyValue('--series-1').trim(), c2 = css.getPropertyValue('--series-2').trim();
+  const charts = [
+    makeChart('chP', [{ key: 'P', name: 'Pressure', color: c1 }], (v, f) => v.toFixed(2) + (f ? ' bar' : '')),
+    makeChart('chQ', [{ key: 'Q', name: 'Flow', color: c1 }], (v, f) => v.toFixed(1) + (f ? ' ml/s' : '')),
+    makeChart('chT', [{ key: 'Tb', name: 'Boiler', color: c1, fixed: [0, 120] }, { key: 'Tout', name: 'Spout', color: c2 }], (v, f) => v.toFixed(0) + (f ? ' °C' : '')),
+    makeChart('chC', [{ key: 'TDS', name: 'TDS', color: c1 }], (v, f) => v.toFixed(1) + (f ? ' %' : ''))
+  ];
+
+  // ---------- readouts ----------
+  const $ = id => document.getElementById(id);
+  const phaseInfo = {
+    heating: ['Heating', '#8f8e86'], pressurising: ['Pressurising · wetting the puck', '#c98500'],
+    extraction: ['Extraction', '#d9a066'], sputter: ['Strombolian phase · sputtering', '#e66767'], done: ['Brew finished', '#0ca30c']
+  };
+  let lastHistLen = -1, summaryShown = false;
+  function readouts() {
+    const ph = phaseInfo[S.phase]; $('phaseTxt').textContent = ph[0]; $('phaseDot').style.background = ph[1];
+    $('timePill').textContent = `t = ${S.t.toFixed(1)} s`;
+    $('valvePill').style.display = S.valve ? '' : 'none';
+    const set = (id, v, u) => { $(id).innerHTML = `${v}<small>${u}</small>`; };
+    set('vP', (S.Pb / 1e5).toFixed(2), 'bar g');
+    set('vTb', S.Tboil.toFixed(0), '°C');
+    set('vQ', (S.QoutS * 1e6).toFixed(1), 'ml/s');
+    const flowing = S.tFirst !== null && S.phase !== 'done';
+    set('vTo', flowing ? S.Tin.toFixed(0) : '—', '°C');
+    set('vC', flowing ? (S.Cin / 10).toFixed(1) : '—', '%');
+    set('vV', (S.delivered * 1e6).toFixed(0), 'ml');
+    set('vTDS', S.delivered > 1e-6 ? (S.solids / S.delivered / 10).toFixed(2) : '—', '% TDS');
+    set('vEY', (S.solids / S.DOSE * 100).toFixed(1), '%');
+    $('heatBtn').textContent = S.heater && S.phase !== 'done' ? 'Turn heat off' : 'Turn heat on';
+    if (S.history.length !== lastHistLen) { lastHistLen = S.history.length; charts.forEach(drawChart); }
+    if (S.phase === 'done' && !summaryShown && S.t - S.tDone > 1) {
+      summaryShown = true;
+      const tds = S.solids / S.delivered / 10, ey = S.solids / S.DOSE * 100;
+      const verdict = ey < 18 ? 'under-extracted (sour/thin)' : ey > 22 ? 'over-extracted (bitter)' : 'in the classic 18–22% window';
+      $('summary').innerHTML = `<h3>Brew summary</h3><ul>
+        <li>First coffee at <b>${S.tFirst.toFixed(0)} s</b>; extraction lasted <b>${(S.tSputter - S.tFirst).toFixed(0)} s</b> before sputtering</li>
+        <li><b>${(S.delivered * 1e6).toFixed(0)} ml</b> brewed from ${(S.DOSE * 1e3).toFixed(0)} g of coffee (brew ratio 1:${(S.delivered * 1e6 / (S.DOSE * 1e3)).toFixed(1)})</li>
+        <li>Cup strength <b>${tds.toFixed(2)}% TDS</b>, extraction yield <b>${ey.toFixed(1)}%</b> — ${verdict}</li>
+        <li>Coffee in the upper chamber: <b>${S.poolT.toFixed(0)} °C</b>; peak boiler pressure <b>${Math.max(...S.history.map(h => h.P)).toFixed(2)} bar</b></li></ul>`;
+      $('summary').style.display = 'block';
+    }
+  }
+
+  // ---------- controls ----------
+  const kFromSlider = v => 0.6e-13 * Math.pow(4e-13 / 0.6e-13, v / 100);
+  const kLabel = v => { const k = kFromSlider(v); const g = v < 30 ? 'fine' : v > 70 ? 'coarse' : 'medium'; return `${g} · ${(k / 1e-13).toFixed(1)}×10⁻¹³ m²`; };
+  let T0 = 20;
+  $('sPow').addEventListener('input', e => { S.params.power = +e.target.value; $('lPow').textContent = e.target.value + ' W'; });
+  $('sK').addEventListener('input', e => { $('lK').textContent = kLabel(+e.target.value); });
+  const seg = (id, fn) => $(id).addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; $(id).querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); fn(+b.dataset.v); });
+  seg('segT0', v => { T0 = v; });
+  seg('segSpd', v => { speed = v; });
+  $('fieldTabs').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; field = b.dataset.f; document.querySelectorAll('#fieldTabs button').forEach(x => x.classList.toggle('on', x === b)); setCbar(); render(); });
+  function restart() {
+    S.reset({ power: +$('sPow').value, kBed: kFromSlider(+$('sK').value), T0 });
+    summaryShown = false; $('summary').style.display = 'none'; lastHistLen = -1; running = true; $('playBtn').textContent = 'Pause';
+    readouts(); render();
+  }
+  $('applyBtn').addEventListener('click', restart);
+  $('resetBtn').addEventListener('click', restart);
+  $('playBtn').addEventListener('click', () => { running = !running; $('playBtn').textContent = running ? 'Pause' : 'Play'; });
+  $('heatBtn').addEventListener('click', () => { if (S.phase === 'done') return; S.heater = !S.heater; readouts(); });
+  $('tracerBtn').addEventListener('click', () => { tracers = !tracers; $('tracerBtn').textContent = 'Tracers: ' + (tracers ? 'on' : 'off'); render(); });
+  window.addEventListener('resize', () => { fitCanvas(); render(); charts.forEach(drawChart); });
+
+  // ---------- loop ----------
+  let stepMs = 4;
+  function frame() {
+    if (running && !(S.phase === 'done' && S.t - S.tDone > 8)) {
+      const t0 = performance.now(); let n = 0;
+      while (n < speed && performance.now() - t0 < 40) { S.step(); n++; }
+      stepMs = 0.9 * stepMs + 0.1 * (performance.now() - t0) / Math.max(1, n);
+      $('perf').textContent = `Solver steps per frame · ${stepMs.toFixed(1)} ms per step · Δt ≈ ${(S.dt * 1000).toFixed(0)} ms`;
+    }
+    render(); readouts();
+    requestAnimationFrame(frame);
+  }
+  S.reset({ power: 450, kBed: kFromSlider(50), T0: 20 });
+  fitCanvas(); setCbar(); render(); readouts();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
